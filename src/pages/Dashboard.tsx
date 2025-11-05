@@ -67,13 +67,34 @@ const Dashboard: React.FC = () => {
           <p className="text-gray-600 mb-6">
             Welcome to your user dashboard for <span className="font-semibold">{getEntityDisplayName(selectedEntity)}</span> - <span className="font-semibold">{getInventoryDisplayName(selectedInventory)}</span>.
           </p>
-          {selectedInventory === 'test_item' && selectedEntity === 'adgyl' && (
+          {selectedInventory === 'test_item' &&
+            (selectedEntity === 'adgyl' || selectedEntity === 'agro' || selectedEntity === 'biopharma') && (
             <div className="mb-6">
               <button
                 onClick={() => navigate('/test-item-form')}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold shadow-md"
               >
                 + Add New Test Item
+              </button>
+            </div>
+          )}
+          {selectedInventory === 'study' && (
+            <div className="mb-6">
+              <button
+                onClick={() => navigate('/study-form')}
+                className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold shadow-md"
+              >
+                + Add New Study
+              </button>
+            </div>
+          )}
+          {selectedInventory === 'facility_doc' && (
+            <div className="mb-6">
+              <button
+                onClick={() => navigate('/facility-doc-form')}
+                className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold shadow-md"
+              >
+                + Add New Facility Doc
               </button>
             </div>
           )}

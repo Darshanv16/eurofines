@@ -8,6 +8,8 @@ import InventorySelection from './pages/InventorySelection';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import TestItemForm from './pages/TestItemForm';
+import StudyForm from './pages/StudyForm';
+import FacilityDocForm from './pages/FacilityDocForm';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -55,6 +57,22 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <TestItemForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/study-form"
+            element={
+              <ProtectedRoute>
+                <StudyForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/facility-doc-form"
+            element={
+              <ProtectedRoute>
+                <FacilityDocForm />
               </ProtectedRoute>
             }
           />
