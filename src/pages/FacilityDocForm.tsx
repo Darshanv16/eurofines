@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 const FacilityDocForm: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, selectedEntity } = useAuth();
 
   const [formData, setFormData] = useState({
     deptSection: '',
@@ -25,11 +26,36 @@ const FacilityDocForm: React.FC = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // eslint-disable-next-line no-console
-    console.log('Facility Doc submitted:', formData);
-    alert('Facility Doc saved.');
+    
+    if (!selectedEntity) {
+      alert('Please select an entity first');
+      return;
+    }
+
+    // Format data for API - map camelCase to snake_case
+    const submitData: any = {
+      dept_section: formData.deptSection,
+      date: formData.date || null,
+      particulars: formData.particulars,
+      total_no_of_pages: formData.totalNoOfPages ? parseInt(formData.totalNoOfPages) : null,
+      submitted_by: formData.submittedBy,
+      admin_index_no: formData.adminIndexNo,
+      admin_date_of_receipt: formData.adminDateOfReceipt || null,
+      admin_date_of_indexing: formData.adminDateOfIndexing || null,
+      admin_remarks: formData.adminRemarks,
+      entity: selectedEntity,
+    };
+
+    const response = await api.createFacilityDoc(submitData);
+    
+    if (response.error) {
+      alert(`Error: ${response.error}`);
+    } else {
+      alert('Facility Doc saved.');
+      navigate('/admin-dashboard');
+    }
   };
 
   const handleBack = () => navigate(-1);

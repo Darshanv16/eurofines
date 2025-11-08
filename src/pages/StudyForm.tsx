@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 const StudyForm: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, selectedEntity } = useAuth();
 
   const [formData, setFormData] = useState({
     studyNumber: '',
@@ -67,12 +68,58 @@ const StudyForm: React.FC = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Persist as needed (API/localStorage placeholder)
-    // eslint-disable-next-line no-console
-    console.log('Study form submitted:', formData);
-    alert('Study form submitted successfully!');
+    
+    if (!selectedEntity) {
+      alert('Please select an entity first');
+      return;
+    }
+
+    // Format data for API - map camelCase to snake_case
+    const submitData: any = {
+      study_number: formData.studyNumber,
+      study_code: formData.studyCode,
+      test_item_code: formData.testItemCode,
+      sd_or_pi_name: formData.sdOrPiName,
+      study_plan_page_no: formData.studyPlanPageNo,
+      study_plan_amendment_pages: formData.studyPlanAmendmentPages,
+      date_of_receipt: formData.dateOfReceipt || null,
+      rd_index: formData.rdIndex,
+      fr_index: formData.frIndex,
+      block_slides_index: formData.blockSlidesIndex,
+      tissues_index: formData.tissuesIndex,
+      carcass_index: formData.carcassIndex,
+      raw_data_count: parseInt(formData.rawDataCount) || 0,
+      final_or_terminated_report: formData.finalOrTerminatedReport,
+      amendment_to_final_report: formData.amendmentToFinalReport,
+      others: formData.others,
+      electronic_data_archived_using_archive_system: formData.electronicDataArchivedUsingArchiveSystem,
+      manually_archiving_data: formData.manuallyArchivingData,
+      provantis_data: formData.provantisData,
+      empower_data: formData.empowerData,
+      other_electronic_if_any: formData.otherElectronicIfAny,
+      details_of_electronic_data_archived_through: formData.detailsOfElectronicDataArchivedThrough,
+      block_slides_name_box_no: formData.blockSlidesNameBoxNo,
+      block_slides_no_of_box: formData.blockSlidesNoOfBox,
+      tissue_box_name_box_no: formData.tissueBoxNameBoxNo,
+      tissue_box_no_of_box: formData.tissueBoxNoOfBox,
+      carcass_box_name_box_no: formData.carcassBoxNameBoxNo,
+      carcass_box_no_of_box: formData.carcassBoxNoOfBox,
+      study_completion_date: formData.studyCompletionDate || null,
+      remarks: formData.remarks,
+      raw_data_items: JSON.stringify(formData.rawDataItems),
+      entity: selectedEntity,
+    };
+
+    const response = await api.createStudy(submitData);
+    
+    if (response.error) {
+      alert(`Error: ${response.error}`);
+    } else {
+      alert('Study form submitted successfully!');
+      navigate('/admin-dashboard');
+    }
   };
 
   const handleBack = () => {

@@ -3,9 +3,9 @@ export type Entity = 'adgyl' | 'agro' | 'biopharma';
 export type InventoryType = 'test_item' | 'study' | 'facility_doc';
 
 export interface User {
-  id: string;
+  id: number | string;
   email: string;
-  password: string;
+  password?: string;
   role: UserRole;
 }
 

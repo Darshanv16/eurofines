@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, AuthContextType, Entity, InventoryType } from '../types/auth';
+import { User, UserRole, AuthContextType, Entity, InventoryType } from '../types/auth';
+import { api } from '../services/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -20,11 +21,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [selectedInventory, setSelectedInventory] = useState<InventoryType | null>(null);
 
-  // Load user, selected entity, and inventory from localStorage on mount
+  // Load user from token and selected entity/inventory from localStorage on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Verify token and get user info
+      api.getCurrentUser().then((response) => {
+        if (response.data) {
+          const userData: User = {
+            id: response.data.id,
+            email: response.data.email,
+            role: response.data.role as UserRole,
+          };
+          setUser(userData);
+        } else {
+          // Token invalid, clear it
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+      });
     }
     
     const storedEntity = localStorage.getItem('selectedEntity');
@@ -39,49 +54,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Get all users from localStorage
-    const usersJSON = localStorage.getItem('users');
-    if (!usersJSON) return false;
+    const response = await api.signin(email, password);
     
-    const users: User[] = JSON.parse(usersJSON);
-    const foundUser = users.find(u => u.email === email && u.password === password);
+    if (response.error) {
+      throw new Error(response.error);
+    }
     
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('user', JSON.stringify(foundUser));
+    if (response.data) {
+      localStorage.setItem('token', response.data.token);
+      const userData: User = {
+        id: response.data.user.id,
+        email: response.data.user.email,
+        role: response.data.user.role as UserRole,
+      };
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
       return true;
     }
     
-    return false;
+    throw new Error('An error occurred. Please try again.');
   };
 
   const signup = async (email: string, password: string, role: 'user' | 'admin'): Promise<boolean> => {
-    // Get existing users from localStorage
-    const usersJSON = localStorage.getItem('users');
-    const users: User[] = usersJSON ? JSON.parse(usersJSON) : [];
+    const response = await api.signup(email, password, role);
     
-    // Check if user already exists
-    if (users.some(u => u.email === email)) {
-      return false;
+    if (response.error) {
+      throw new Error(response.error);
     }
     
-    // Create new user
-    const newUser: User = {
-      id: Date.now().toString(),
-      email,
-      password,
-      role,
-    };
+    if (response.data) {
+      localStorage.setItem('token', response.data.token);
+      const userData: User = {
+        id: response.data.user.id,
+        email: response.data.user.email,
+        role: response.data.user.role as UserRole,
+      };
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+      return true;
+    }
     
-    // Save to localStorage
-    users.push(newUser);
-    localStorage.setItem('users', JSON.stringify(users));
-    
-    // Auto-login after signup
-    setUser(newUser);
-    localStorage.setItem('user', JSON.stringify(newUser));
-    
-    return true;
+    throw new Error('An error occurred. Please try again.');
   };
 
   const selectEntity = (entity: Entity) => {
@@ -101,6 +114,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null);
     setSelectedEntity(null);
     setSelectedInventory(null);
+    localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('selectedEntity');
     localStorage.removeItem('selectedInventory');

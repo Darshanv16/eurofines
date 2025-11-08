@@ -15,22 +15,23 @@ const SignIn: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    if (!email || !password) {
+    // Normalize email (trim and lowercase)
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
       setError('All fields are required');
       return;
     }
 
     setLoading(true);
     try {
-      const success = await login(email, password);
+      const success = await login(normalizedEmail, password);
       if (success) {
         // Redirect to entity selection after login
         navigate('/entity-selection');
-      } else {
-        setError('Invalid email or password');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }

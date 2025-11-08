@@ -18,8 +18,11 @@ const SignUp: React.FC = () => {
     e.preventDefault();
     setError('');
 
+    // Normalize email (trim and lowercase)
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Validation
-    if (!email || !password || !confirmPassword) {
+    if (!normalizedEmail || !password || !confirmPassword) {
       setError('All fields are required');
       return;
     }
@@ -36,15 +39,13 @@ const SignUp: React.FC = () => {
 
     setLoading(true);
     try {
-      const success = await signup(email, password, role);
+      const success = await signup(normalizedEmail, password, role);
       if (success) {
         // Redirect to entity selection after signup
         navigate('/entity-selection');
-      } else {
-        setError('Email already exists');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }

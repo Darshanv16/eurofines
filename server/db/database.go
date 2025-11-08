@@ -1,0 +1,57 @@
+package db
+
+import (
+	"fmt"
+	"log"
+
+	"eurofines-server/config"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+var DB *gorm.DB
+
+func Initialize() (*gorm.DB, error) {
+	cfg := config.LoadConfig()
+
+	dsn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.DBHost,
+		cfg.DBPort,
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBName,
+		cfg.DBSSLMode,
+	)
+
+	var err error
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	log.Println("Successfully connected to PostgreSQL database")
+	return DB, nil
+}
+
+func AutoMigrate(db *gorm.DB) error {
+	err := db.AutoMigrate(
+		&User{},
+		&TestItem{},
+		&Study{},
+		&FacilityDoc{},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	log.Println("Database migration completed successfully")
+	return nil
+}
+

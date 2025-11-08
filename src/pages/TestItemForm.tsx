@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 const TestItemForm: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, selectedEntity } = useAuth();
 
   const [formData, setFormData] = useState({
     testItemName: '',
@@ -20,6 +21,7 @@ const TestItemForm: React.FC = () => {
     retestDate: '',
     quantity: '',
     dateOfArchive: '',
+    archivedBy: '',
     disposedOrReturned: '',
     sponsorApprovalDate: '',
     remark: '',
@@ -32,11 +34,44 @@ const TestItemForm: React.FC = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Here you would typically save the data
-    console.log('Form submitted:', formData);
-    alert('Test Item form submitted successfully!');
+    
+    if (!selectedEntity) {
+      alert('Please select an entity first');
+      return;
+    }
+
+    // Format data for API - map camelCase to snake_case
+    const submitData: any = {
+      test_item_name: formData.testItemName,
+      test_item_code: formData.testItemCode,
+      company_name: formData.companyName,
+      date_of_receipt: formData.dateOfReceipt || null,
+      batch_no: formData.batchNo,
+      arc_no: formData.arcNo,
+      rack_no: formData.rackNo,
+      index_no: formData.indexNo,
+      storage: formData.storage,
+      expiry_date: formData.expiryDate || null,
+      retest_date: formData.retestDate || null,
+      quantity: formData.quantity,
+      date_of_archive: formData.dateOfArchive || null,
+      archived_by: formData.archivedBy,
+      disposed_or_returned: formData.disposedOrReturned,
+      sponsor_approval_date: formData.sponsorApprovalDate || null,
+      remark: formData.remark,
+      entity: selectedEntity,
+    };
+
+    const response = await api.createTestItem(submitData);
+    
+    if (response.error) {
+      alert(`Error: ${response.error}`);
+    } else {
+      alert('Test Item form submitted successfully!');
+      navigate('/admin-dashboard');
+    }
   };
 
   const handleBack = () => {
@@ -275,14 +310,14 @@ const TestItemForm: React.FC = () => {
                 />
               </div>
               <div>
-                <label htmlFor="Acrhived By" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="archivedBy" className="block text-sm font-medium text-gray-700 mb-2">
                   Archived By
                 </label>
                 <input
                   type="text"
-                  id="Archived By"
-                  name="Archived By"
-                  value={formData.rackNo}
+                  id="archivedBy"
+                  name="archivedBy"
+                  value={formData.archivedBy}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                   placeholder="Enter Archived By"
