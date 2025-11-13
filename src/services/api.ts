@@ -1,6 +1,6 @@
 import { UserRole } from '../types/auth';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3001/api';
 
 export interface ApiResponse<T> {
   data?: T;
@@ -23,77 +23,120 @@ class ApiService {
     return localStorage.getItem('token');
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
-    const token = this.getAuthToken();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+  private buildHeaders(extra?: HeadersInit): Record<string, string> {
+  const token = this.getAuthToken();
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  // Always return a plain object
+  const result: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
 
-    try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
+  if (extra) {
+    if (extra instanceof Headers) {
+      extra.forEach((value, key) => {
+        result[key] = value;
       });
+    } else if (Array.isArray(extra)) {
+      for (const [key, value] of extra) {
+        result[key] = value;
+      }
+    } else {
+      Object.assign(result, extra);
+    }
+  }
 
-      // Read response as text first, then parse as JSON
+  if (token) {
+    result["Authorization"] = `Bearer ${token}`;
+  }
+
+  return result;
+}
+
+  private normalizeResponseBody<T>(parsed: any): T {
+    if (!parsed) return parsed;
+    if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const keys = Object.keys(parsed);
+      if (keys.length === 1) {
+        const k = keys[0];
+        if (
+          [
+            'user',
+            'token',
+            'test_item',
+            'test_items',
+            'study',
+            'studies',
+            'facility_doc',
+            'facility_docs',
+            'data',
+            'result',
+            'items',
+          ].includes(k)
+        ) {
+          return parsed[k] as T;
+        }
+      }
+    }
+    return parsed as T;
+  }
+
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const headers = this.buildHeaders(options.headers || {});
+    try {
+      const response = await fetch(url, { ...options, headers });
+
+      // read text first to avoid JSON parse errors
       const text = await response.text();
-      let data;
-      
+
+      // handle empty body
+      if (!text) {
+        if (!response.ok) {
+          return { error: `Error: ${response.status} ${response.statusText}` };
+        }
+        return { data: undefined };
+      }
+
+      // try parse JSON
+      let parsed: any;
       try {
-        data = text ? JSON.parse(text) : {};
-      } catch (jsonError) {
-        // If JSON parsing fails, return the text as error message
+        parsed = JSON.parse(text);
+      } catch (err) {
         if (!response.ok) {
           return { error: text || `Error: ${response.status} ${response.statusText}` };
         }
-        return { error: 'Invalid response format from server' };
+        return { error: 'Invalid JSON response from server' };
       }
 
       if (!response.ok) {
-        // Handle different error response formats
-        const errorMessage = data?.error || data?.message || `Error: ${response.status} ${response.statusText}`;
-        return { error: errorMessage };
+        const errMsg = parsed?.error || parsed?.message || parsed?.detail || `Error: ${response.status} ${response.statusText}`;
+        return { error: errMsg };
       }
 
+      const data = this.normalizeResponseBody<T>(parsed);
       return { data };
-    } catch (error) {
-      // Network error or fetch failed
-      const errorMessage = error instanceof Error ? error.message : 'Network error';
-      // Provide more helpful error message for common issues
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
         return { error: 'Cannot connect to server. Please make sure the backend server is running on http://localhost:3001' };
       }
-      return { error: errorMessage };
+      return { error: message };
     }
   }
 
   // Auth endpoints
   async signup(email: string, password: string, role: 'user' | 'admin') {
-    return this.request<AuthResponse>(
-      '/auth/signup',
-      {
-        method: 'POST',
-        body: JSON.stringify({ email, password, role }),
-      }
-    );
+    return this.request<AuthResponse>('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, role }),
+    });
   }
 
   async signin(email: string, password: string) {
-    return this.request<AuthResponse>(
-      '/auth/signin',
-      {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      }
-    );
+    return this.request<AuthResponse>('/auth/signin', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
   }
 
   async getCurrentUser() {
@@ -102,7 +145,7 @@ class ApiService {
 
   // Test Items endpoints
   async getTestItems(entity?: string) {
-    const query = entity ? `?entity=${entity}` : '';
+    const query = entity ? `?entity=${encodeURIComponent(entity)}` : '';
     return this.request<any[]>(`/test-items${query}`);
   }
 
@@ -125,14 +168,12 @@ class ApiService {
   }
 
   async deleteTestItem(id: number) {
-    return this.request<void>(`/test-items/${id}`, {
-      method: 'DELETE',
-    });
+    return this.request<void>(`/test-items/${id}`, { method: 'DELETE' });
   }
 
   // Studies endpoints
   async getStudies(entity?: string) {
-    const query = entity ? `?entity=${entity}` : '';
+    const query = entity ? `?entity=${encodeURIComponent(entity)}` : '';
     return this.request<any[]>(`/studies${query}`);
   }
 
@@ -141,28 +182,20 @@ class ApiService {
   }
 
   async createStudy(data: any) {
-    return this.request<any>('/studies', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>('/studies', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async updateStudy(id: number, data: any) {
-    return this.request<any>(`/studies/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>(`/studies/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
   async deleteStudy(id: number) {
-    return this.request<void>(`/studies/${id}`, {
-      method: 'DELETE',
-    });
+    return this.request<void>(`/studies/${id}`, { method: 'DELETE' });
   }
 
   // Facility Docs endpoints
   async getFacilityDocs(entity?: string) {
-    const query = entity ? `?entity=${entity}` : '';
+    const query = entity ? `?entity=${encodeURIComponent(entity)}` : '';
     return this.request<any[]>(`/facility-docs${query}`);
   }
 
@@ -171,25 +204,17 @@ class ApiService {
   }
 
   async createFacilityDoc(data: any) {
-    return this.request<any>('/facility-docs', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>('/facility-docs', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async updateFacilityDoc(id: number, data: any) {
-    return this.request<any>(`/facility-docs/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+    return this.request<any>(`/facility-docs/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
   async deleteFacilityDoc(id: number) {
-    return this.request<void>(`/facility-docs/${id}`, {
-      method: 'DELETE',
-    });
+    return this.request<void>(`/facility-docs/${id}`, { method: 'DELETE' });
   }
 }
 
 export const api = new ApiService();
-
+export default api;

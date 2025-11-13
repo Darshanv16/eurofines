@@ -1,28 +1,40 @@
 package routes
 
 import (
-	"eurofines-server/middleware"
-
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-func SetupRoutes(r *gin.Engine, database *gorm.DB) {
-	authHandler := &AuthHandler{DB: database}
+func SetupRoutes(r *gin.Engine, db *gorm.DB) {
+	// create handler instances if you prefer object style
+	auth := &AuthHandler{}
+	ti := &TestItemHandler{}
+	st := &StudyHandler{}
+	fd := &FacilityDocHandler{}
 
-	// Public routes
-	r.POST("/api/auth/signup", authHandler.SignUp)
-	r.POST("/api/auth/signin", authHandler.SignIn)
-
-	// Protected routes
 	api := r.Group("/api")
-	api.Use(middleware.AuthMiddleware())
-	{
-		api.GET("/auth/me", authHandler.GetCurrentUser)
-		SetupTestItemRoutes(api, database)
-		SetupStudyRoutes(api, database)
-		SetupFacilityDocRoutes(api, database)
-	}
 
-	// Health check endpoint is handled in main.go if needed
+	// auth
+	authGroup := api.Group("/auth")
+	authGroup.POST("/signup", auth.SignUp)
+	authGroup.POST("/signin", auth.SignIn)
+	authGroup.GET("/me", auth.GetCurrentUser) // protect with auth middleware later
+
+	// test items
+	items := api.Group("/test-items")
+	items.POST("", ti.CreateTestItem)
+	items.GET("", ti.GetTestItems)
+	items.GET("/:id", ti.GetTestItem)     // implement if you want
+	items.PUT("/:id", ti.UpdateTestItem)  // implement
+	items.DELETE("/:id", ti.DeleteTestItem) // implement
+
+	// studies
+	stud := api.Group("/studies")
+	stud.POST("", st.CreateStudy)
+	stud.GET("", st.GetStudies)
+
+	// facility docs
+	fdGroup := api.Group("/facility-docs")
+	fdGroup.POST("", fd.CreateFacilityDoc)
+	fdGroup.GET("", fd.GetFacilityDocs)
 }

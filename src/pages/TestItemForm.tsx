@@ -1,76 +1,127 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../services/api';
+import api from '../services/api';
+
+type FormState = {
+  testItemName: string;
+  testItemCode: string;
+  companyName: string;
+  dateOfReceipt: string;
+  batchNo: string;
+  arcNo: string;
+  rackNo: string;
+  indexNo: string;
+  storage: string;
+  expiryDate: string;
+  retestDate: string;
+  quantity: string;
+  dateOfArchive: string;
+  archivedBy: string;
+  disposedOrReturned: string;
+  sponsorApprovalDate: string;
+  remark: string;
+};
+
+const initialState: FormState = {
+  testItemName: '',
+  testItemCode: '',
+  companyName: '',
+  dateOfReceipt: '',
+  batchNo: '',
+  arcNo: '',
+  rackNo: '',
+  indexNo: '',
+  storage: '',
+  expiryDate: '',
+  retestDate: '',
+  quantity: '',
+  dateOfArchive: '',
+  archivedBy: '',
+  disposedOrReturned: '',
+  sponsorApprovalDate: '',
+  remark: '',
+};
 
 const TestItemForm: React.FC = () => {
   const navigate = useNavigate();
   const { user, selectedEntity } = useAuth();
 
-  const [formData, setFormData] = useState({
-    testItemName: '',
-    testItemCode: '',
-    companyName: '',
-    dateOfReceipt: '',
-    batchNo: '',
-    arcNo: '',
-    rackNo: '',
-    indexNo: '',
-    storage: '',
-    expiryDate: '',
-    retestDate: '',
-    quantity: '',
-    dateOfArchive: '',
-    archivedBy: '',
-    disposedOrReturned: '',
-    sponsorApprovalDate: '',
-    remark: '',
-  });
+  const [formData, setFormData] = useState<FormState>(initialState);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
-    });
+    } as Pick<FormState, keyof FormState>);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setMessage(null);
+
     if (!selectedEntity) {
-      alert('Please select an entity first');
+      setMessage('Please select an entity first.');
       return;
     }
 
-    // Format data for API - map camelCase to snake_case
-    const submitData: any = {
-      test_item_name: formData.testItemName,
-      test_item_code: formData.testItemCode,
-      company_name: formData.companyName,
-      date_of_receipt: formData.dateOfReceipt || null,
-      batch_no: formData.batchNo,
-      arc_no: formData.arcNo,
-      rack_no: formData.rackNo,
-      index_no: formData.indexNo,
-      storage: formData.storage,
-      expiry_date: formData.expiryDate || null,
-      retest_date: formData.retestDate || null,
-      quantity: formData.quantity,
-      date_of_archive: formData.dateOfArchive || null,
-      archived_by: formData.archivedBy,
-      disposed_or_returned: formData.disposedOrReturned,
-      sponsor_approval_date: formData.sponsorApprovalDate || null,
-      remark: formData.remark,
-      entity: selectedEntity,
-    };
+    if (!formData.testItemName.trim()) {
+      setMessage('Test item name is required.');
+      return;
+    }
 
-    const response = await api.createTestItem(submitData);
-    
-    if (response.error) {
-      alert(`Error: ${response.error}`);
-    } else {
-      alert('Test Item form submitted successfully!');
-      navigate('/admin-dashboard');
+    setLoading(true);
+
+    try {
+      // build snake_case payload expected by backend
+      const payload: any = {
+        test_item_name: formData.testItemName || null,
+        test_item_code: formData.testItemCode || null,
+        company_name: formData.companyName || null,
+        date_of_receipt: formData.dateOfReceipt || null,
+        batch_no: formData.batchNo || null,
+        arc_no: formData.arcNo || null,
+        rack_no: formData.rackNo || null,
+        index_no: formData.indexNo || null,
+        storage: formData.storage || null,
+        expiry_date: formData.expiryDate || null,
+        retest_date: formData.retestDate || null,
+        quantity: formData.quantity || null,
+        date_of_archive: formData.dateOfArchive || null,
+        archived_by: formData.archivedBy || null,
+        disposed_or_returned: formData.disposedOrReturned || null,
+        sponsor_approval_date: formData.sponsorApprovalDate || null,
+        remark: formData.remark || null,
+        entity: selectedEntity, // must be 'adgyl' | 'agro' | 'biopharma'
+      };
+
+      // set created_by from authenticated user if available
+      if (user?.id) {
+        payload.created_by = user.id;
+      } else {
+        // fallback to localStorage userId if needed
+        const stored = localStorage.getItem('userId');
+        if (stored) payload.created_by = Number(stored);
+      }
+
+      const res = await api.createTestItem(payload);
+
+      if (res.error) {
+        setMessage(`Error: ${res.error}`);
+      } else {
+        setMessage('✅ Test Item form submitted successfully!');
+        // reset form (optional)
+        setFormData(initialState);
+        // navigate back to admin dashboard (as earlier)
+        navigate('/admin-dashboard');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setMessage(`Unexpected error: ${err?.message ?? err}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -385,16 +436,24 @@ const TestItemForm: React.FC = () => {
                 type="button"
                 onClick={handleBack}
                 className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                disabled={loading}
               >
                 Cancel
               </button>
               <button
                 type="submit"
+                disabled={loading}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold"
               >
-                Submit
+                {loading ? 'Submitting...' : 'Submit'}
               </button>
             </div>
+
+            {message && (
+              <p className="mt-4 text-sm" aria-live="polite">
+                {message}
+              </p>
+            )}
           </form>
         </div>
       </div>

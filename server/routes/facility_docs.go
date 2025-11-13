@@ -2,124 +2,62 @@ package routes
 
 import (
 	"net/http"
-	"strconv"
+	"time"
 
 	"eurofines-server/db"
-	"eurofines-server/middleware"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
-type FacilityDocHandler struct {
-	DB *gorm.DB
+type FacilityDocHandler struct{}
+
+type createFacilityReq struct {
+	DeptSection    string  `json:"dept_section"`
+	Date           *string `json:"date"`
+	Particulars    string  `json:"particulars"`
+	TotalNoOfPages *int    `json:"total_no_of_pages"`
+	SubmittedBy    string  `json:"submitted_by"`
+	Entity         string  `json:"entity" binding:"required,oneof=adgyl agro biopharma"`
+	CreatedBy      *uint   `json:"created_by"`
 }
 
 func (h *FacilityDocHandler) CreateFacilityDoc(c *gin.Context) {
-	var facilityDoc db.FacilityDoc
-	if err := c.ShouldBindJSON(&facilityDoc); err != nil {
+	var req createFacilityReq
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Get user ID from context
-	userID, _ := c.Get("user_id")
-	userIDUint := userID.(uint)
-	facilityDoc.CreatedBy = &userIDUint
-
-	if err := h.DB.Create(&facilityDoc).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create facility doc"})
-		return
+	fd := db.FacilityDoc{
+		DeptSection: req.DeptSection,
+		Particulars: req.Particulars,
+		TotalNoOfPages: req.TotalNoOfPages,
+		SubmittedBy: req.SubmittedBy,
+		Entity: req.Entity,
+		CreatedBy: req.CreatedBy,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
-	c.JSON(http.StatusCreated, facilityDoc)
+	if req.Date != nil && *req.Date != "" {
+		var d db.Date
+		if err := d.UnmarshalJSON([]byte(`"` + *req.Date + `"`)); err == nil {
+			fd.Date = &d
+		}
+	}
+
+	if err := db.DB.Create(&fd).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"facility_doc": fd})
 }
 
 func (h *FacilityDocHandler) GetFacilityDocs(c *gin.Context) {
-	var facilityDocs []db.FacilityDoc
-	entity := c.Query("entity")
-
-	query := h.DB
-	if entity != "" {
-		query = query.Where("entity = ?", entity)
-	}
-
-	if err := query.Find(&facilityDocs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch facility docs"})
+	var docs []db.FacilityDoc
+	if err := db.DB.Order("created_at desc").Find(&docs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	c.JSON(http.StatusOK, facilityDocs)
+	c.JSON(http.StatusOK, gin.H{"facility_docs": docs})
 }
-
-func (h *FacilityDocHandler) GetFacilityDoc(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
-
-	var facilityDoc db.FacilityDoc
-	if err := h.DB.First(&facilityDoc, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Facility doc not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, facilityDoc)
-}
-
-func (h *FacilityDocHandler) UpdateFacilityDoc(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
-
-	var facilityDoc db.FacilityDoc
-	if err := h.DB.First(&facilityDoc, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Facility doc not found"})
-		return
-	}
-
-	if err := c.ShouldBindJSON(&facilityDoc); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.DB.Save(&facilityDoc).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update facility doc"})
-		return
-	}
-
-	c.JSON(http.StatusOK, facilityDoc)
-}
-
-func (h *FacilityDocHandler) DeleteFacilityDoc(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
-
-	if err := h.DB.Delete(&db.FacilityDoc{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete facility doc"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Facility doc deleted successfully"})
-}
-
-func SetupFacilityDocRoutes(r *gin.RouterGroup, db *gorm.DB) {
-	handler := &FacilityDocHandler{DB: db}
-
-	facilityDocs := r.Group("/facility-docs")
-	facilityDocs.Use(middleware.AuthMiddleware())
-	{
-		facilityDocs.POST("", handler.CreateFacilityDoc)
-		facilityDocs.GET("", handler.GetFacilityDocs)
-		facilityDocs.GET("/:id", handler.GetFacilityDoc)
-		facilityDocs.PUT("/:id", handler.UpdateFacilityDoc)
-		facilityDocs.DELETE("/:id", middleware.AdminOnly(), handler.DeleteFacilityDoc)
-	}
-}
-

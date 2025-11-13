@@ -2,173 +2,89 @@ package routes
 
 import (
 	"net/http"
-	"strings"
+	"time"
 
 	"eurofines-server/db"
-	"eurofines-server/utils"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthHandler struct {
-	DB *gorm.DB
+type signupReq struct {
+	Email     string `json:"email" binding:"required,email"`
+	Password  string `json:"password" binding:"required,min=6"`
+	Role      string `json:"role" binding:"required,oneof=user admin"`
+	FullName  string `json:"full_name"`
 }
 
-type SignUpRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	Role     string `json:"role" binding:"required,oneof=user admin"`
+// SignUp creates a new user (password hashed)
+func (h *AuthHandler) SignUp(c *gin.Context) {
+	var req signupReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// hash password
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error":"failed to hash password"})
+		return
+	}
+
+	user := db.User{
+		Email: req.Email,
+		Password: string(hashed),
+		Role: req.Role,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := db.DB.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// hide password
+	user.Password = ""
+	c.JSON(http.StatusCreated, gin.H{"user": user})
 }
 
-type SignInRequest struct {
+type signinReq struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
-func (h *AuthHandler) SignUp(c *gin.Context) {
-	var req SignUpRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Normalize email to lowercase for case-insensitive matching
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Email == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email is required"})
-		return
-	}
-
-	// Check if user already exists (case-insensitive)
-	// Query using LOWER() on the database column to match regardless of stored case
-	var existingUser db.User
-	result := h.DB.Where("LOWER(email) = ?", req.Email).First(&existingUser)
-	if result.Error == nil {
-		// User exists
-		c.JSON(http.StatusConflict, gin.H{"error": "User with this email already exists"})
-		return
-	}
-	if result.Error != gorm.ErrRecordNotFound {
-		// If it's not a "record not found" error, it's a database error
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check user existence"})
-		return
-	}
-
-	// Hash password
-	hashedPassword, err := utils.HashPassword(req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-		return
-	}
-
-	// Create user (email is already normalized to lowercase)
-	user := db.User{
-		Email:    req.Email, // Already normalized to lowercase above
-		Password: hashedPassword,
-		Role:     req.Role,
-	}
-
-	if err := h.DB.Create(&user).Error; err != nil {
-		errStr := strings.ToLower(err.Error())
-		// Check if it's a unique constraint violation (duplicate email)
-		// PostgreSQL errors: "duplicate key value violates unique constraint", error code 23505
-		if strings.Contains(errStr, "duplicate key") || 
-		   strings.Contains(errStr, "unique constraint") ||
-		   strings.Contains(errStr, "23505") ||
-		   strings.Contains(errStr, "violates unique constraint") {
-			c.JSON(http.StatusConflict, gin.H{"error": "User with this email already exists"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-		}
-		return
-	}
-
-	// Generate token
-	token, err := utils.GenerateToken(user.ID, user.Email, user.Role)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":    user.ID,
-			"email": user.Email,
-			"role":  user.Role,
-		},
-	})
-}
-
+// SignIn verifies credentials and returns user info (or token if you implement JWT)
 func (h *AuthHandler) SignIn(c *gin.Context) {
-	var req SignInRequest
+	var req signinReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Normalize email to lowercase for case-insensitive matching
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Email == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email is required"})
-		return
-	}
-
-	// Find user (case-insensitive)
-	// Query using LOWER() on the database column to match regardless of stored case
 	var user db.User
-	result := h.DB.Where("LOWER(email) = ?", req.Email).First(&user)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-		} else {
-			// Database error
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred. Please try again."})
-		}
+	if err := db.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error":"invalid credentials"})
 		return
 	}
 
-	// Check password
-	if !utils.CheckPasswordHash(req.Password, user.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error":"invalid credentials"})
 		return
 	}
 
-	// Generate token
-	token, err := utils.GenerateToken(user.ID, user.Email, user.Role)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":    user.ID,
-			"email": user.Email,
-			"role":  user.Role,
-		},
-	})
+	// if you have JWT: create token here and return it
+	user.Password = ""
+	c.JSON(http.StatusOK, gin.H{"user": user})
 }
 
+// GetCurrentUser returns the current user (stub — replace with auth middleware)
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	var user db.User
-	if err := h.DB.First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"id":    user.ID,
-		"email": user.Email,
-		"role":  user.Role,
-	})
+	// If you use middleware to set userID in context, read it here.
+	// For now, return a sample or require created_by in body.
+	c.JSON(http.StatusOK, gin.H{"message": "implement auth middleware to return current user"})
 }
 
+// optional: handler struct (not strictly necessary but consistent)
+type AuthHandler struct{}

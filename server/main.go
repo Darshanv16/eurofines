@@ -14,38 +14,38 @@ import (
 )
 
 func main() {
-	// Load .env (optional)
-	if err := godotenv.Load(); err != nil {
-		log.Println("⚠️  No .env file found — using system environment variables")
+	// Load .env file from server directory
+	if err := godotenv.Load(".env"); err != nil {
+		if err2 := godotenv.Load(); err2 != nil {
+			log.Println("⚠️  No .env file found — using system environment variables")
+		}
 	}
 
-	// Load configuration (uses your config.go)
+	// Load configuration
 	cfg := config.LoadConfig()
 
-	// Connect DB (uses your db/database.go)
-	database, err := db.Initialize()
-	if err != nil {
-		log.Fatalf("❌ Database connection failed: %v", err)
+	// Default port
+	if cfg.Port == "" {
+		cfg.Port = "3001"
+		log.Printf("ℹ️  Using default port: 3001")
 	}
 
-	// Auto-migrate models
-	if err := db.AutoMigrate(database); err != nil {
-		log.Fatalf("❌ Migration failed: %v", err)
-	}
+	// ✅ Connect to PostgreSQL using GORM
+	db.ConnectDatabase()
 
 	// --- Gin HTTP server ---
 	r := gin.Default()
 
-	// CORS (open for dev; tighten for prod)
+	// CORS setup
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173", "http://127.0.0.1:3000"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "Accept"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
 
-	// Health check endpoint
+	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status": "ok",
@@ -54,8 +54,8 @@ func main() {
 		})
 	})
 
-	// Initialize routes
-	routes.SetupRoutes(r, database)
+	// Initialize routes (you’ll add them later)
+	routes.SetupRoutes(r, db.DB)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("✅ Connected to PostgreSQL (%s)", cfg.DBName)
